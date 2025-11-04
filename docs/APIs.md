@@ -40,6 +40,110 @@ The key database tables are:
 *   `match_player`: Links players to matches and stores their performance stats for that match.
 *   `match_player_advanced_stats`: Contains highly detailed stats for a player in a specific match.
 
+### 4. Database Schema
+
+This section provides a detailed overview of the main tables in the PostgreSQL database.
+
+#### `player` table
+
+Stores information about individual players.
+
+| Column            | Type      | Description                                           |
+| ----------------- | --------- | ----------------------------------------------------- |
+| `player_id`       | `varchar` | **Primary Key.** The unique identifier for the player.  |
+| `player_id_encoded`| `varchar` | An encoded version of the player ID.                  |
+| `discord_user_id` | `bigint`  | The player's Discord user ID, if available.            |
+| `platform`        | `varchar` | The platform the player uses (e.g., "steam").         |
+| `last_synced_match`| `varchar` | The ID of the last match synced for this player.      |
+| `created_at`      | `timestamp`| The timestamp when the record was created.             |
+| `deleted_at`      | `timestamp`| The timestamp when the record was soft-deleted.       |
+
+---
+
+#### `match` table
+
+Stores overall information for each match.
+
+| Column            | Type      | Description                                            |
+| ----------------- | --------- | ------------------------------------------------------ |
+| `match_id`        | `varchar` | **Primary Key.** The unique identifier for the match.    |
+| `platform`        | `varchar` | The platform where the match was played.               |
+| `winner_team`     | `integer` | The ID of the winning team.                            |
+| `type`            | `varchar` | The match type (e.g., "Trios", "Duos", "Arena").      |
+| `is_ranked`       | `boolean` | Whether the match was a ranked game.                   |
+| `is_custom_game`  | `boolean` | Whether the match was a custom game.                   |
+| `is_inhouse`      | `boolean` | Whether the match was an in-house game.                |
+| `inhouse_server_id`| `bigint`  | The Discord server ID if it was an in-house game.     |
+| `match_start`     | `timestamp`| The timestamp when the match started.                  |
+| `match_end`       | `timestamp`| The timestamp when the match ended.                    |
+| `created_at`      | `timestamp`| The timestamp when the record was created.             |
+| `deleted_at`      | `timestamp`| The timestamp when the record was soft-deleted.       |
+
+---
+
+#### `match_player` table
+
+Links players to matches and stores their core performance stats.
+
+| Column                     | Type      | Description                                                 |
+| -------------------------- | --------- | ----------------------------------------------------------- |
+| `match_id`                 | `varchar` | **Composite Primary Key.** Foreign key to the `match` table. |
+| `player_id_encoded`        | `varchar` | **Composite Primary Key.** Foreign key to the `player` table.|
+| `team_id`                  | `integer` | The ID of the team the player was on.                         |
+| `hero`                     | `varchar` | The hero the player used.                                   |
+| `survival_duration`        | `float`   | The duration the player survived in seconds.                |
+| `placement`                | `integer` | The final placement of the player's team.                   |
+| `kills`                    | `integer` | The number of kills the player got.                         |
+| `deaths`                   | `integer` | The number of deaths the player had.                        |
+| `assists`                  | `integer` | The number of assists the player got.                       |
+| `healing_given`            | `float`   | The amount of healing the player gave to others.            |
+| `healing_given_self`       | `float`   | The amount of healing the player gave to themselves.        |
+| `hero_effective_damage_done`| `float`   | The effective damage done to other heroes.                  |
+| `hero_effective_damage_taken`| `float`   | The effective damage taken from other heroes.               |
+| `rating_delta`             | `float`   | The change in the player's rating after the match.          |
+| `rating`                   | `float`   | The player's rating after the match.                        |
+| `created_at`               | `timestamp`| The timestamp when the record was created.                  |
+| `deleted_at`               | `timestamp`| The timestamp when the record was soft-deleted.            |
+
+---
+
+#### `match_player_advanced_stats` table
+
+Stores detailed performance stats for a player in a specific match.
+
+| Column                     | Type      | Description                                                        |
+| -------------------------- | --------- | ------------------------------------------------------------------ |
+| `match_id`                 | `varchar` | **Composite Primary Key.** Foreign key to the `match` table.        |
+| `player_id`                | `varchar` | **Composite Primary Key.** Foreign key to the `player` table.        |
+| `hero`                     | `varchar` | The hero the player used.                                          |
+| `survival_duration`        | `float`   | The duration the player survived in seconds.                       |
+| `kills`                    | `integer` | The number of kills.                                               |
+| `deaths`                   | `integer` | The number of deaths.                                              |
+| `assists`                  | `integer` | The number of assists.                                             |
+| `ressurects`               | `integer` | The number of times the player resurrected a teammate.             |
+| `revived`                  | `integer` | The number of times the player was revived.                        |
+| `knocks`                   | `integer` | The number of times the player knocked down an enemy.              |
+| `knocked`                  | `integer` | The number of times the player was knocked down.                   |
+| `max_kill_streak`          | `integer` | The maximum kill streak the player achieved.                       |
+| `max_knock_streak`         | `integer` | The maximum knock streak the player achieved.                      |
+| `creep_kills`              | `integer` | The number of creep kills.                                         |
+| `gold_from_enemies`        | `integer` | The amount of gold earned from killing enemies.                    |
+| `gold_from_monsters`       | `integer` | The amount of gold earned from killing monsters.                   |
+| `healing_given`            | `float`   | The total healing given.                                           |
+| `healing_given_self`       | `float`   | The total healing given to self.                                   |
+| `healing_received`         | `float`   | The total healing received.                                        |
+| `damage_done`              | `float`   | The total damage done.                                             |
+| `effective_damage_done`    | `float`   | The total effective damage done.                                   |
+| `hero_damage_done`         | `float`   | The total damage done to heroes.                                   |
+| `hero_effective_damage_done`| `float`   | The total effective damage done to heroes.                         |
+| `damage_taken`             | `float`   | The total damage taken.                                            |
+| `effective_damage_taken`   | `float`   | The total effective damage taken.                                  |
+| `hero_damage_taken`        | `float`   | The total damage taken from heroes.                                |
+| `hero_effective_damage_taken`| `float`   | The total effective damage taken from heroes.                      |
+| `shield_mitigated_damage`  | `float`   | The amount of damage mitigated by shields.                         |
+| `created_at`               | `timestamp`| The timestamp when the record was created.                         |
+| `deleted_at`               | `timestamp`| The timestamp when the record was soft-deleted.                    |
+
 ### Summary for another project
 
 To use the functionality of this repo for a match history website, the recommended approach would be:
