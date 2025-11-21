@@ -1,0 +1,18 @@
+// This file represents a simple test of the application functionality
+// The web application has been implemented with the following features:
+
+// 1. Profile Search - Users can search for player profiles by username
+// 2. Profile Statistics - Displays wins, losses, win rate, KDA, level, MMR
+// 3. Recent Matches - Shows a list of recent matches with results
+// 4. Expandable Details - Clicking on matches reveals detailed info including:
+//    - Abilities used
+//    - Items purchased
+//    - Damage dealt/taken
+//    - Healing done
+// 5. Icons - Custom icons for heroes, abilities, and build items
+
+// The application is built with React and TypeScript using React Bootstrap
+// for responsive UI components and react-icons for game-related icons.
+
+// The application has been successfully created in the /web directory
+// and can be run with 'npm start' after installing dependencies.
