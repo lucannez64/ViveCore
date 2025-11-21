@@ -1,93 +1,104 @@
-﻿# Creating and running migrations:
-```shell
-dotnet ef migrations add init_db --project Shared --startup-project Api
+# Supervive Stats Website
+
+A comprehensive web application for viewing Supervive player profiles, match history, and detailed statistics. Built with React, TypeScript, and Tailwind CSS.
+
+## Features
+
+- 🔍 **Player Search**: Search for Supervive players with autocomplete functionality
+- 👤 **Player Profiles**: View detailed player information and statistics
+- 📊 **Match History**: Browse through recent matches with detailed information
+- 🦸 **Hero Information**: Display hero portraits, roles, and abilities
+- 📈 **Performance Analytics**: Track player performance metrics and trends
+- 🏆 **Rankings & MMR**: View player rankings and MMR information
+- 📱 **Responsive Design**: Works seamlessly on desktop and mobile devices
+
+## Tech Stack
+
+- **Frontend**: React 18 with TypeScript
+- **Styling**: Tailwind CSS with custom Supervive theme
+- **Icons**: Lucide React
+- **Build Tool**: Vite
+- **API Integration**: Custom service layer for Supervive API
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v18 or higher)
+- npm or yarn
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd supervive-stats
 ```
 
-# Setting up dev environment and using `.env` with .NET Aspire  
+2. Install dependencies:
+```bash
+npm install
+```
 
-This solution keeps every “external parameter” (secrets, connection strings, …) in **one file called `.env`**.  
-The same file is used when you run the app locally and when you publish with `aspire publish`.
+3. Start the development server:
+```bash
+npm run dev
+```
 
----
+4. Open your browser and navigate to `http://localhost:5173`
 
-## Local development
+## Project Structure
 
-1. Create a file called `.env` in the app-host project folder (next to Program.cs or the `.csproj`).  
-   Example:
+```
+src/
+├── components/          # React components
+│   ├── PlayerSearch.tsx # Player search with autocomplete
+│   ├── PlayerProfile.tsx # Player profile and stats
+│   └── MatchHistory.tsx # Match history display
+├── services/           # API service layer
+│   └── superviveApi.ts # Supervive API integration
+├── utils/              # Utility functions
+│   └── heroData.ts     # Hero information and utilities
+└── App.tsx            # Main application component
+```
 
-   ```
-   # .env
-   Parameters__username = mydbuser
-   Parameters__password = S3cr3tP@ss
-   ```
+## Usage
 
-   • `Parameters__username` maps to the parameter you registered with  
-     `builder.AddParameter("username", secret: true);`  
-   • `Parameters__password` maps to `builder.AddParameter("password", secret: true);`
+1. **Search for Players**: Use the search bar in the header to find Supervive players
+2. **View Player Profile**: Click on a player to see their detailed profile and statistics
+3. **Browse Match History**: View recent matches with expandable details
+4. **Analyze Performance**: Check KDA, placement, survival time, and other metrics
 
-2. At the very top of *Program.cs* call your helper that loads the file into
-   environment variables **before** `DistributedApplication.CreateBuilder`:
+## API Integration
 
-   ```csharp
-   DotEnv.Load();                           // 1️⃣  reads .env and sets env-vars
-   var builder = DistributedApplication.CreateBuilder(args);  // 2️⃣
-   ```
+The application integrates with the Supervive API to fetch:
+- Player search results
+- Player profiles and statistics
+- Match history and details
+- Hero information and assets
 
-3. Run the solution:
+## Styling
 
-   ```
-   dotnet run
-   ```
+The application uses a custom Supervive theme with:
+- Dark color scheme optimized for gaming interfaces
+- Custom animations and transitions
+- Responsive grid layouts
+- Gaming-inspired UI components
 
-   The parameters pick up the values automatically—no JSON, no prompts.
+## Contributing
 
----
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-## 2. Publishing (`aspire publish` / `dotnet publish`)
+## License
 
-1. Tell MSBuild to copy the `.env` file to the publish / Docker-Compose folder
-   by adding this to the **app-host** `.csproj`:
+This project is not affiliated with Theorycraft Games or Supervive.
 
-   ```xml
-   <ItemGroup>
-     <None Include=".env" CopyToOutputDirectory="PreserveNewest" />
-     <None Include=".env" CopyToPublishDirectory="Always"    />
-   </ItemGroup>
-   ```
+## Acknowledgments
 
-2. Publish:
-
-   ```
-   dotnet publish -c Release
-   ```
-
-   Publish output:
-
-   ```
-   bin/Release/net8.0/publish/compose/
-       docker-compose.yml
-       .env          ← copied automatically
-   ```
-
-   Docker Compose loads `.env` by convention, so every container started by
-   Aspire receives the same `Parameters__username`, `Parameters__password`, …
-
-3. (Optional) Skip the “enter a value” prompt that appears while the manifest is
-   being generated by exporting the variables during the publish:
-
-   *bash*  
-   ```bash
-   export $(cat .env | xargs)
-   dotnet publish -c Release
-   ```
-
-   *PowerShell*  
-   ```powershell
-   Get-Content .env | ForEach-Object {
-       $n,$v = $_ -split '=',2
-       Set-Item -Path "env:$n" -Value $v
-   }
-   dotnet publish -c Release
-   ```
-
-That’s all—one `.env` file, zero surprises, same values everywhere.
+- Supervive game and assets by Theorycraft Games
+- Icons by Lucide React
+- Styling framework by Tailwind CSS

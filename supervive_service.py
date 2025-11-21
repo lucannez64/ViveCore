@@ -298,6 +298,44 @@ if __name__ == "__main__":
     p_kd.add_argument("--pages", type=int, default=20)
     p_kd.add_argument("--out", type=str, default="combat_stats.png")
 
+    # --- Nouvelle commande: mmr_rating ---
+    p_mmr = sub.add_parser("mmr_rating", help="Récupère le MMR rank via OAuth + appel MMR")
+    p_mmr.add_argument("platform_token", help="Jeton plateforme (ex: Steam) pour l'OAuth")
+    p_mmr.add_argument("client_basic", help="En-tête Authorization Basic (client id:secret encodé base64)")
+    p_mmr.add_argument("flight_id", help="Identifiant de vol (x-flight-id / additionalData)")
+    p_mmr.add_argument("device_token", help="Valeur du cookie device-token")
+    p_mmr.add_argument("--namespace", default="loki")
+    p_mmr.add_argument("--game_client_version", default="1.0.0.0")
+    p_mmr.add_argument("--sdk_version", default="26.1.0")
+    p_mmr.add_argument("--oauth_base", default="https://accounts.projectloki.theorycraftgames.com")
+    p_mmr.add_argument("--mmr_base", default="https://mmr-jx-prod.prodcluster.awsinfra.theorycraftgames.com")
+    p_mmr.add_argument("--mmr_client_version", default="release2.0.live-154144-shipping")
+
+    # --- Nouvelle commande: mmr_rating_v3 (flux password grant) ---
+    p_mmr_v3 = sub.add_parser("mmr_rating_v3", help="Récupère le MMR rank via OAuth v3 (grant_type=password)")
+    p_mmr_v3.add_argument("--username", required=True, help="Nom d'utilisateur (email)")
+    p_mmr_v3.add_argument("--password", required=True, help="Mot de passe")
+    p_mmr_v3.add_argument("--client_id", required=True, help="Client ID OAuth pour le mot de passe")
+    p_mmr_v3.add_argument("--oauth_url", default="https://oauth.theorycraftgames.com/iam/v3/oauth/token", help="URL du token OAuth v3")
+    p_mmr_v3.add_argument("--mmr_base", default="https://mmr-jx-prod.prodcluster.awsinfra.theorycraftgames.com")
+    p_mmr_v3.add_argument("--mmr_client_version", default="release2.0.live-154144-shipping")
+
+    # --- Nouvelle commande: mmr_correlation ---
+    p_corr = sub.add_parser("mmr_correlation", help="Corrèle RatingDelta avec stats de match")
+    p_corr.add_argument("platform")
+    p_corr.add_argument("player_id")
+    p_corr.add_argument("--pages", type=int, default=50)
+    p_corr.add_argument("--mmr_json", required=True, help="Chemin du JSON MMR (sortie mmr_rating)")
+    p_corr.add_argument("--out", type=str, default="mmr_correlation.png")
+
+    # --- Nouvelle commande: jin_builds_details ---
+    p_jin2 = sub.add_parser("jin_builds_details", help="Placement vs builds/abilities pour Jin (avec fetch détails match)")
+    p_jin2.add_argument("platform")
+    p_jin2.add_argument("player_id")
+    p_jin2.add_argument("--pages", type=int, default=50)
+    p_jin2.add_argument("--out", type=str, default="jin_builds.png")
+    p_jin2.add_argument("--min_n", type=int, default=4, help="Taille minimale d'échantillon par build (défaut 4)")
+
     args = parser.parse_args()
     svc = SuperviveService()
 
@@ -573,6 +611,64 @@ if __name__ == "__main__":
         fig.tight_layout()
         fig.savefig(args.out, dpi=150)
 
+        # --- Nouvelle figure: Kills par partie (avec moyenne glissante) et Kills par chasseur ---
+        # Calcul moyenne glissante simple (fenêtre 10)
+        k_window = 10
+        rolling_kills: List[float] = []
+        for i in range(n):
+            s = max(0, i - k_window + 1)
+            subset = kills_series[s : i + 1]
+            rolling_kills.append(sum(subset) / len(subset) if subset else 0.0)
+
+        # Préparer tri des kills par chasseur (par moyenne de kills par partie)
+        # Calculer le nombre de parties par chasseur
+        hunter_games: Dict[str, int] = {}
+        for it in items:
+            hero_name = (it.get("hero") or {}).get("name") or (it.get("hero") or {}).get("asset_id") or "unknown"
+            hunter_games[hero_name] = hunter_games.get(hero_name, 0) + 1
+
+        def _avg_kills(h: str) -> float:
+            games = hunter_games.get(h, 0)
+            return (hunter_kills.get(h, 0) / games) if games > 0 else 0.0
+
+        hunters_by_kills = sorted(hunters, key=lambda h: _avg_kills(h), reverse=True)
+        kills_vals = [_avg_kills(h) for h in hunters_by_kills]
+
+        fig2, axes2 = plt.subplots(1, 2, figsize=(14, 7), gridspec_kw={"width_ratios": [1.3, 1]})
+        axk0, axk1 = axes2
+
+        # 1) Kills par partie + moyenne glissante
+        axk0.plot(xs, kills_series, color="#1f77b4", linewidth=1.3, marker="o", markersize=3, label="Kills par partie")
+        axk0.plot(xs, rolling_kills, color="#d62728", linewidth=2.0, label=f"Moyenne glissante ({k_window})")
+        axk0.set_title("Kills par partie")
+        axk0.set_xlabel("Partie")
+        axk0.set_ylabel("Kills")
+        axk0.grid(True, which="major", alpha=0.25)
+        axk0.legend(frameon=False, loc="upper right")
+
+        # 2) Kills par chasseur (trié)
+        bars_k = axk1.bar(hunters_by_kills, kills_vals, color="#4daf4a")
+        axk1.set_title("Kills par chasseur (trié)")
+        axk1.set_ylabel("Moyenne de kills par game")
+        axk1.tick_params(axis="x", labelrotation=35)
+        axk1.margins(x=0.02)
+        # Ajouter labels au-dessus des barres (si peu d'items, pour lisibilité)
+        max_bars_labels = 30
+        if len(bars_k) <= max_bars_labels:
+            for rect, v in zip(bars_k, kills_vals):
+                axk1.text(rect.get_x() + rect.get_width() / 2, v + max(0.02, v * 0.01), f"{v:.2f}", ha="center", va="bottom", fontsize=9)
+
+        fig2.tight_layout()
+        try:
+            out2 = args.out
+            if isinstance(out2, str) and out2.lower().endswith(".png"):
+                out2 = out2[:-4] + "_kills.png"
+            else:
+                out2 = (out2 or "combat_stats") + ".kills.png"
+            fig2.savefig(out2, dpi=200, bbox_inches="tight", facecolor="white")
+        except Exception:
+            pass
+
         # Résumé JSON: global + top 5 chasseurs par KD (min 5 parties jouées si possible)
         hunter_counts: Dict[str, int] = {}
         for it in items:
@@ -601,6 +697,495 @@ if __name__ == "__main__":
             ],
         }
         print(json.dumps(summary, ensure_ascii=False))
+    elif args.cmd == "mmr_rating":
+        # 1) OAuth: échanger platform_token contre access_token
+        oauth_url = args.oauth_base.rstrip("/") + "/iam/v4/oauth/platforms/steam/token"
+        params = {"createHeadless": "false"}
+        headers = {
+            "Authorization": f"Basic {args.client_basic}",
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "x-flight-id": args.flight_id,
+            "Namespace": args.namespace,
+            "Game-Client-Version": args.game_client_version,
+            "AccelByte-SDK-Version": args.sdk_version,
+            "User-Agent": "Loki/UE5-CL-0 (http-legacy) Windows/10.0.26100.1.256.64bit",
+        }
+        form = {
+            "platform_token": args.platform_token,
+            "createHeadless": "false",
+            "macAddress": args.device_token,
+            "additionalData": json.dumps({"flightId": args.flight_id}),
+        }
+        sess = requests.Session()
+        oauth_res = sess.post(oauth_url, params=params, headers=headers, data=form, cookies={"device-token": args.device_token}, timeout=60)
+        oauth_res.raise_for_status()
+        oauth_payload = oauth_res.json()
+        access_token = oauth_payload.get("access_token")
+        user_id = oauth_payload.get("user_id")
+        if not access_token:
+            raise SystemExit("OAuth: access_token manquant dans la réponse")
+        if not user_id:
+            # Tentative de fallback via champ 'user_id' manquant: certains tokens l'encodent, mais on exige ici l'ID
+            raise SystemExit("OAuth: user_id manquant dans la réponse (spécifiez un flux qui le renvoie)")
+
+        # 2) Appel MMR rank
+        mmr_url = args.mmr_base.rstrip("/") + f"/mmr/player-ratings/{user_id}/rank"
+        mmr_headers = {
+            "Accept": "*/*",
+            "x-theorycraft-clientversion": args.mmr_client_version,
+            "Authorization": f"Bearer {access_token}",
+            "User-Agent": "Loki/UE5-CL-0 (http-legacy) Windows/10.0.26100.1.256.64bit",
+        }
+        mmr_res = sess.get(mmr_url, headers=mmr_headers, timeout=60)
+        mmr_res.raise_for_status()
+        print(json.dumps(mmr_res.json(), ensure_ascii=False))
+    elif args.cmd == "mmr_rating_v3":
+        # OAuth v3: grant_type=password pour obtenir un access_token
+        sess = requests.Session()
+
+        # form = {
+        #     "password": args.password,
+        #     "username": args.username,
+        #     "grant_type": "password",
+        #     "client_id": args.client_id,
+        # }
+        # oauth_res = sess.post(
+        #     args.oauth_url,
+        #     headers=headers,
+        #     data=form,
+        #     cookies={
+        #         "_vwo_uuid_v2": "DBCC2D37FD67527D210DE8F430B8B06BF|5577ba59e5a77ae2836244b59d949d3b",
+        #     },
+        #     timeout=60,
+        # )
+        # oauth_res.raise_for_status()
+        # oauth_payload = oauth_res.json()
+        access_token = "eyJhbGciOiJSUzI1NiIsImtpZCI6ImE5Njg5ZGYxNzVhZWU2OTI1MWY4MDZlNzc4Zjg5MzYwZjNmMjQ0YTMiLCJ0eXAiOiJKV1QifQ.eyJiYW5zIjpbXSwiY2xpZW50X2lkIjoiZWI5OTBhYzY0YjQ3NDZmMWEyOTBjYjhiZDQxMWM5OWEiLCJjb3VudHJ5IjoiRlIiLCJkaXNwbGF5X25hbWUiOiJIaXJldyIsImV4cCI6MTc2MjYxMzY4NCwiaWF0IjoxNzYyNjEwMDg0LCJpc19jb21wbHkiOnRydWUsImlzcyI6Imh0dHBzOi8vYWNjb3VudHMucHJvamVjdGxva2kudGhlb3J5Y3JhZnRnYW1lcy5jb20iLCJqZmxncyI6MSwianRpIjoiOGY4NTA1ODM0MGViNGQ4ZmEzOWRhOTRjNmM0YTcwMGUiLCJuYW1lc3BhY2UiOiJ0aGVvcnljcmFmdCIsIm5hbWVzcGFjZV9yb2xlcyI6W3sibmFtZXNwYWNlIjoibG9raSIsInJvbGVJZCI6ImM0YzAyZDFhNmU3ODQzNzliNjhmOGQ0MzA3ZTFhY2U5In0seyJuYW1lc3BhY2UiOiJ0aGVvcnljcmFmdC0iLCJyb2xlSWQiOiIyMjUxNDM4ODM5ZTk0OGQ3ODNlYzBlNTI4MWRhZjA1YiJ9XSwicGVybWlzc2lvbnMiOltdLCJyb2xlcyI6W10sInNjb3BlIjoiYWNjb3VudCBjb21tZXJjZSBzb2NpYWwgcHVibGlzaGluZyBhbmFseXRpY3MiLCJzdWIiOiIwNTk3YmViMjdmN2Y0ZmFjYjRjYTYzNTIyYmY0MTY4ZSIsInVuaXF1ZV9kaXNwbGF5X25hbWUiOiJoaXJldyM5OTEzIn0.mKR2ZKRxVtGCRR0Q1rfsLLzNXjJNzCDj96FQQ8rBVFYXdNoqQuG5k_K_mQ7eTSliBfjZXBlQFXIRVbrgGTI0YvHST2zWXrQ77WEtg4lc7CHh56OqsyAYWOBTL5236M_91gRdzC8I0MgzVc2D1TvvAI469VfZaTuIt2zecFokKm13DSaJmq3J81zdp3quH2Yc8IIpk1nXbtBnFVgR9PuqIG6cJUr1PXSBudnRJKRZCsVn4FSEppargpUrxfZ_CTbQLABaE6HJrnwpkQi2QU15B98QzmLcWd-xYcm1SorgSQfI03gpCLxKjOhJlPxNIIQ1F4HiO3iAejrqyvfRX72ZwQ"
+        if not access_token:
+            raise SystemExit("OAuth v3: access_token manquant dans la réponse")
+        mmr_headers = {
+            "Accept": "*/*",
+            "x-theorycraft-clientversion": "",
+            "Authorization": f"Bearer {access_token}",
+            "User-Agent": "Loki/UE5-CL-0 (http-legacy) Windows/10.0.26100.1.256.64bit",
+        }
+        # Déterminer l'user_id: dans la réponse ou dans le JWT (claim)
+        user_id = "80421fd76eb541e79dacd35bfdcefb49"
+        if not user_id:
+            try:
+                parts = str(access_token).split(".")
+                if len(parts) >= 2:
+                    import base64
+                    def _b64url_decode(s: str) -> bytes:
+                        s += "=" * (-len(s) % 4)
+                        return base64.urlsafe_b64decode(s.encode("utf-8"))
+                    payload_raw = _b64url_decode(parts[1])
+                    claims = json.loads(payload_raw.decode("utf-8"))
+                    user_id = claims.get("user_id") or claims.get("userId") or claims.get("uid") or claims.get("sub")
+            except Exception:
+                user_id = None
+        if not user_id:
+            raise SystemExit("OAuth v3: user_id introuvable dans la réponse/token")
+
+        # Appeler l'endpoint MMR
+        mmr_url = args.mmr_base.rstrip("/") + f"/mmr/player-ratings/{user_id}/rank"
+        mmr_res = sess.get(mmr_url, headers=mmr_headers, timeout=60)
+        mmr_res.raise_for_status()
+        print(json.dumps(mmr_res.json(), ensure_ascii=False))
+    elif args.cmd == "mmr_correlation":
+        # Charger MMR JSON
+        try:
+            with open(args.mmr_json, "r", encoding="utf-8") as f:
+                mmr_payload = json.load(f)
+        except Exception as e:
+            raise SystemExit(f"Impossible de lire --mmr_json: {e}")
+
+        # Extraire updates de la file par défaut
+        updates = []
+        try:
+            qrr = (mmr_payload.get("QueueRankRating") or {}).get("default") or {}
+            updates = qrr.get("Updates") or []
+        except Exception:
+            updates = []
+        if not updates:
+            raise SystemExit("Aucune 'Updates' trouvée dans le JSON MMR (QueueRankRating.default.Updates)")
+
+        # Récupérer les matchs Supervive (pages)
+        items = svc.get_player_matches_pages(args.platform, args.player_id, pages=args.pages)
+        # Indexer par match id probable
+        by_match: Dict[str, Dict[str, Any]] = {}
+        for it in items:
+            mid = it.get("match_id") or it.get("matchId") or it.get("id") or it.get("MatchID")
+            if isinstance(mid, str):
+                by_match[mid] = it
+
+        # Construire dataset corrélé
+        rows: List[Dict[str, Any]] = []
+        for u in updates:
+            mid = u.get("MatchID") or u.get("match_id")
+            if not isinstance(mid, str):
+                continue
+            sv = by_match.get(mid)
+            stats = (sv or {}).get("stats") or {}
+            # Champs supplémentaires potentiels avec clés de secours
+            creep_kills = stats.get("CreepKills") or stats.get("CreepsKilled") or stats.get("CreepsKills")
+            hero_damage = stats.get("HeroDamageDone") or stats.get("HeroEffectiveDamageDone")
+            gold_treasure = stats.get("GoldFromTreasure") or stats.get("TreasureGold") or stats.get("GoldTreasure")
+            gold_monsters = stats.get("GoldFromMonsters") or stats.get("MonstersGold") or stats.get("GoldMonsters")
+            row = {
+                "match_id": mid,
+                "rating_delta": u.get("RatingDelta"),
+                "kills_u": u.get("KillsAmount"),
+                "elims_u": u.get("ElimsAmount"),
+                "placement_u": u.get("Placement"),
+                "bonus": u.get("Bonus"),
+                "cost": u.get("Cost"),
+                "kills": stats.get("Kills"),
+                "deaths": stats.get("Deaths"),
+                "assists": stats.get("Assists"),
+                "creep_kills": creep_kills,
+                "hero_damage": hero_damage,
+                "gold_treasure": gold_treasure,
+                "gold_monsters": gold_monsters,
+                "placement": sv.get("placement") if sv else None,
+                "is_ranked": sv.get("is_ranked") if sv else None,
+                "queue_id": sv.get("queue_id") if sv else None,
+            }
+            rows.append(row)
+
+        # Filtrer valeurs numériques
+        def _to_float(x: Any) -> float:
+            try:
+                return float(x)
+            except Exception:
+                return float("nan")
+
+        # Colonnes d'intérêt
+        cols = [
+            ("kills", "Kills (API)"),
+            ("kills_u", "Kills (MMR)"),
+            ("elims_u", "Elims (MMR)"),
+            ("deaths", "Deaths (API)"),
+            ("placement", "Placement (API)"),
+            ("placement_u", "Placement (MMR)"),
+            ("bonus", "Bonus (MMR)"),
+            ("cost", "Cost (MMR)"),
+            ("creep_kills", "CreepKills (API)"),
+            ("hero_damage", "HeroDamageDone (API)"),
+            ("gold_treasure", "GoldFromTreasure (API)"),
+            ("gold_monsters", "GoldFromMonsters (API)"),
+        ]
+
+        # Calculer corrélations de Pearson
+        try:
+            import math
+            import numpy as np
+            import seaborn as sns
+            import matplotlib.pyplot as plt
+        except Exception as e:
+            raise SystemExit(f"numpy/seaborn/matplotlib requis: pip install numpy seaborn matplotlib\n{e}")
+
+        # Construire arrays
+        y = np.array([_to_float(r.get("rating_delta")) for r in rows], dtype=float)
+        valid_mask = ~np.isnan(y)
+
+        correlations: Dict[str, float] = {}
+        for key, _ in cols:
+            x = np.array([_to_float(r.get(key)) for r in rows], dtype=float)
+            m = valid_mask & ~np.isnan(x)
+            if m.sum() >= 3:
+                x_m = x[m]
+                y_m = y[m]
+                # Pearson r
+                x_std = x_m.std(ddof=1)
+                y_std = y_m.std(ddof=1)
+                if x_std > 0 and y_std > 0:
+                    r = float(np.corrcoef(x_m, y_m)[0, 1])
+                else:
+                    r = float("nan")
+            else:
+                r = float("nan")
+            correlations[key] = r
+
+        # Tracé: matrice de corrélations et scatter pour top 3 corrélés en valeur absolue
+        # Préparer dataframe léger
+        try:
+            import pandas as pd
+            df = pd.DataFrame(rows)
+        except Exception:
+            df = None
+
+        # Sélection top 3
+        ranked = sorted([(k, abs(v)) for k, v in correlations.items() if not math.isnan(v)], key=lambda t: t[1], reverse=True)
+        top_keys = [k for k, _ in ranked[:3]]
+
+        # Figure
+        fig, axes = plt.subplots(2, max(1, len(top_keys)), figsize=(6 * max(1, len(top_keys)), 9))
+        if len(top_keys) == 1:
+            axes = np.array([[axes[0]], [axes[1]]]) if isinstance(axes, np.ndarray) else np.array([[axes], [axes]])
+        # 1) Barres des corrélations
+        ax0 = axes[0, 0]
+        labels = [lbl for _, lbl in cols]
+        vals = [correlations.get(k) for k, _ in cols]
+        ax0.barh(labels, [0 if v is None or math.isnan(v) else v for v in vals], color="#1f77b4")
+        ax0.set_title("Corrélation (Pearson r) avec RatingDelta")
+        ax0.axvline(0, color="#777", lw=1)
+        ax0.set_xlim(-1, 1)
+
+        # 2) Scatters top features
+        for idx, key in enumerate(top_keys):
+            ax = axes[1, idx]
+            xv = np.array([_to_float(r.get(key)) for r in rows], dtype=float)
+            m = valid_mask & ~np.isnan(xv)
+            if m.sum() >= 3:
+                ax.scatter(xv[m], y[m], s=18, alpha=0.6)
+                # régression linéaire simple
+                try:
+                    coef = np.polyfit(xv[m], y[m], 1)
+                    xp = np.linspace(xv[m].min(), xv[m].max(), 50)
+                    yp = coef[0] * xp + coef[1]
+                    ax.plot(xp, yp, color="#d62728", lw=2)
+                except Exception:
+                    pass
+            ax.set_xlabel(next(lbl for k2, lbl in cols if k2 == key))
+            ax.set_ylabel("RatingDelta")
+            ax.grid(True, alpha=0.25)
+            ax.set_title(f"Scatter: r={correlations.get(key):.2f}")
+
+        fig.tight_layout()
+        fig.savefig(args.out, dpi=200, bbox_inches="tight", facecolor="white")
+
+        # Afficher tableau simple
+        summary = { next(lbl for k2, lbl in cols if k2 == k): v for k, v in correlations.items() }
+        print(json.dumps({"output": args.out, "n": int(len(rows)), "correlations": summary}, ensure_ascii=False))
+    elif args.cmd == "jin_builds_details":
+        try:
+            import numpy as np
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+        except Exception as e:
+            raise SystemExit(f"matplotlib requis: pip install matplotlib\n{e}")
+
+        # Charger IDs de matchs
+        items = svc.get_player_matches_pages(args.platform, args.player_id, pages=args.pages)
+
+        # Normaliser liste de match_ids (tolérant)
+        match_ids: list[str] = []
+        for it in items:
+            mid = it.get("match_id") or it.get("MatchID") or it.get("id") or it.get("matchId")
+            if isinstance(mid, str):
+                match_ids.append(mid)
+
+        # Fonction utilitaire
+        def _is_jin_name_or_asset(name_val: Any, asset_val: Any) -> bool:
+            def _norm(s: Any) -> str:
+                return str(s or "").strip().lower()
+            n = _norm(name_val)
+            a = _norm(asset_val)
+            # tolérant: contient "jin" dans nom ou asset id
+            return ("jin" in n) or ("jin" in a)
+
+        def _num(x: Any) -> float:
+            try:
+                return float(x)
+            except Exception:
+                return float("nan")
+
+        # Itérer chaque match: récupérer détails publics, trouver l'entrée du joueur, extraire placement + builds
+        rows: List[Dict[str, Any]] = []
+        for mid in match_ids:
+            try:
+                details = svc.get_match(args.platform, mid)
+            except Exception:
+                continue
+            # details: liste par joueur
+            entry = None
+            if isinstance(details, list):
+                # Heuristiques d'appariement joueur
+                for p in details:
+                    pid = p.get("player_id_encoded") or p.get("playerIdEncoded") or ((p.get("player") or {}).get("id"))
+                    norm_pid = str(pid or "").replace("-", "")
+                    target = args.player_id.replace("-", "")
+                    if norm_pid and (norm_pid == target or norm_pid.endswith(target) or target.endswith(norm_pid)):
+                        entry = p
+                        break
+                # fallback: prendre même team/hero si unique
+                if entry is None and len(details) > 0:
+                    # Prendre la première occurrence de Jin si unique
+                    candidates = [p for p in details if _is_jin_name_or_asset(((p.get("hero") or {}).get("name")), (p.get("hero_asset_id") or p.get("heroAssetId")))]
+                    if len(candidates) == 1:
+                        entry = candidates[0]
+            if not isinstance(entry, dict):
+                continue
+
+            hero_name = ((entry.get("hero") or {}).get("name"))
+            hero_asset = (entry.get("hero_asset_id") or entry.get("heroAssetId"))
+            if not _is_jin_name_or_asset(hero_name, hero_asset):
+                continue
+
+            # Ne garder que les parties classées
+            is_ranked = entry.get("is_ranked") or entry.get("IsRanked")
+            if not bool(is_ranked):
+                continue
+
+            placement = entry.get("placement")
+            stats = entry.get("stats") or {}
+
+            # Item build depuis inventory.{Boots, Inventory, Utility}
+            def _extract_names(seq: Any) -> list[str]:
+                out: list[str] = []
+                if isinstance(seq, list):
+                    for e in seq:
+                        if isinstance(e, dict):
+                            nm = e.get("name") or e.get("Name") or e.get("asset_id") or e.get("assetId") or e.get("id")
+                            if nm:
+                                out.append(str(nm))
+                        else:
+                            out.append(str(e))
+                elif isinstance(seq, (str, int, float)):
+                    out.append(str(seq))
+                return out
+            inventory = entry.get("inventory") or entry.get("Inventory") or {}
+            def _ids(seq: Any) -> list[str]:
+                out: list[str] = []
+                if isinstance(seq, list):
+                    for e in seq:
+                        if isinstance(e, dict):
+                            idv = e.get("identifier") or e.get("id") or e.get("name") or e.get("asset_id") or e.get("assetId")
+                            if idv:
+                                out.append(str(idv))
+                        else:
+                            out.append(str(e))
+                elif isinstance(seq, dict):
+                    idv = seq.get("identifier") or seq.get("id") or seq.get("name") or seq.get("asset_id") or seq.get("assetId")
+                    if idv:
+                        out.append(str(idv))
+                elif isinstance(seq, (str, int, float)):
+                    out.append(str(seq))
+                return out
+
+            boots_ids = _ids((inventory or {}).get("Boots"))
+            inv_ids = _ids((inventory or {}).get("Inventory"))
+            util_ids = _ids((inventory or {}).get("Utility"))
+
+            parts: list[str] = []
+            if boots_ids:
+                parts.append("+".join(boots_ids))
+            if inv_ids:
+                parts.append("+".join(inv_ids))
+            if util_ids:
+                parts.append("+".join(util_ids))
+            item_build = "|".join(parts) if parts else "(none)"
+
+            # Ability build depuis ability_events (s'arrêter quand une ability atteint niveau 4)
+            ability_events = entry.get("ability_events") or entry.get("AbilityEvents")
+            ability_build = None
+            if isinstance(ability_events, list) and ability_events:
+                ab_labels: list[str] = []
+                ability_levels: Dict[str, int] = {}  # Suivre le niveau de chaque ability
+                for ev in ability_events:
+                    if isinstance(ev, dict):
+                        nm = ev.get("hotkey") or ev.get("ability") or ev.get("name")
+                        level = ev.get("level") or ev.get("Level")
+                        if nm:
+                            nm_str = str(nm)
+                            # Incrémenter le niveau de cette ability
+                            ability_levels[nm_str] = ability_levels.get(nm_str, 0) + 1
+                            # S'arrêter si une ability atteint le niveau 4
+                            if ability_levels[nm_str] >= 4:
+                                break
+                            ab_labels.append(nm_str)
+                if ab_labels:
+                    ability_build = ">".join(ab_labels)
+            if not ability_build:
+                # fallback sur anciens champs
+                raw_abilities = entry.get("AbilityBuild") or entry.get("AbilityOrder") or entry.get("Abilities") or entry.get("abilities")
+                if isinstance(raw_abilities, list):
+                    ab_labels = _extract_names(raw_abilities)
+                    if ab_labels:
+                        ability_build = ">".join(ab_labels[:12])
+                elif isinstance(raw_abilities, (str, int, float)):
+                    ability_build = str(raw_abilities)
+            if not ability_build:
+                ability_build = "(none)"
+
+            rows.append({
+                "placement": placement,
+                "item_build": item_build,
+                "ability_build": ability_build,
+            })
+
+        # Regrouper et calculer placement moyen par build (garder n>=2 pour stabilité)
+        def _group_mean(rows_in: List[Dict[str, Any]], key: str) -> List[tuple[str, float, int]]:
+            buckets: Dict[str, List[float]] = {}
+            for r in rows_in:
+                label = r.get(key)
+                if not isinstance(label, str) or not label:
+                    continue
+                p = _num(r.get("placement"))
+                if np.isnan(p):
+                    continue
+                buckets.setdefault(label, []).append(p)
+            out: List[tuple[str, float, int]] = []
+            for lbl, vals in buckets.items():
+                if len(vals) >= max(1, int(args.min_n)):
+                    out.append((lbl, float(np.mean(vals)), len(vals)))
+            out.sort(key=lambda t: t[1])
+            return out
+
+        item_stats = _group_mean(rows, "item_build")
+        ability_stats = _group_mean(rows, "ability_build")
+
+        if not item_stats and not ability_stats:
+            raise SystemExit("Aucune donnée exploitable pour Jin (item/ability builds)")
+
+        top_n = 12
+        item_top = item_stats[:top_n]
+        abil_top = ability_stats[:top_n]
+
+        cols_n = 1 if (item_top and not abil_top) or (abil_top and not item_top) else 2
+        fig, axes = plt.subplots(1, cols_n, figsize=(8 * cols_n, 6))
+        if cols_n == 1:
+            axes = [axes]
+
+        idx_ax = 0
+        if item_top:
+            ax = axes[idx_ax]; idx_ax += 1
+            labels = [t[0] for t in item_top]
+            means = [t[1] for t in item_top]
+            counts = [t[2] for t in item_top]
+            y_pos = np.arange(len(labels))
+            ax.barh(y_pos, means, color="#2ca02c")
+            ax.set_yticks(y_pos, labels)
+            ax.invert_yaxis()
+            ax.set_xlabel("Placement moyen (plus bas est meilleur)")
+            ax.set_title("Jin • Placement vs Item Build (détails)")
+            for i, (m, c) in enumerate(zip(means, counts)):
+                ax.text(m + 0.05, i, f"{m:.2f} (n={c})", va="center", fontsize=9)
+
+        if abil_top:
+            ax = axes[idx_ax]
+            labels = [t[0] for t in abil_top]
+            means = [t[1] for t in abil_top]
+            counts = [t[2] for t in abil_top]
+            y_pos = np.arange(len(labels))
+            ax.barh(y_pos, means, color="#9467bd")
+            ax.set_yticks(y_pos, labels)
+            ax.invert_yaxis()
+            ax.set_xlabel("Placement moyen (plus bas est meilleur)")
+            ax.set_title("Jin • Placement vs Ability Build (détails)")
+            for i, (m, c) in enumerate(zip(means, counts)):
+                ax.text(m + 0.05, i, f"{m:.2f} (n={c})", va="center", fontsize=9)
+
+        fig.tight_layout()
+        out_path = args.out
+        try:
+            fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor="white")
+        except Exception:
+            pass
+        print(json.dumps({"output": out_path, "rows": len(rows), "item_groups": len(item_stats), "ability_groups": len(ability_stats)}, ensure_ascii=False))
     else:
         parser.print_help()
 

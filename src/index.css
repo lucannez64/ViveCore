@@ -1,0 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #0f172a;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+}
+
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+  width: 100%;
+}
+
+@layer components {
+  .card {
+    @apply bg-slate-800 border border-slate-700 rounded-lg shadow-lg backdrop-blur-sm;
+    background: rgba(30, 41, 59, 0.8);
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-xl hover:scale-105 hover:border-supervive-500;
+  }
+
+  .btn-primary {
+    @apply bg-supervive-600 hover:bg-supervive-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+
+  .btn-secondary {
+    @apply bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-supervive-400 to-supervive-600 bg-clip-text text-transparent;
+  }
+
+  .hero-portrait {
+    @apply w-16 h-16 rounded-full border-2 border-supervive-500 shadow-lg;
+    object-fit: cover;
+  }
+
+  .match-card {
+    @apply card card-hover p-4 mb-4;
+  }
+
+  .placement-badge {
+    @apply inline-flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm;
+  }
+
+  .placement-1 { @apply bg-yellow-500 text-yellow-900; }
+  .placement-2 { @apply bg-gray-400 text-gray-900; }
+  .placement-3 { @apply bg-amber-600 text-amber-900; }
+  .placement-top { @apply bg-victory-500 text-victory-900; }
+  .placement-bottom { @apply bg-defeat-500 text-defeat-900; }
+
+  .stat-item {
+    @apply flex items-center justify-between py-2 border-b border-slate-600 last:border-b-0;
+  }
+
+  .loading-spinner {
+    @apply animate-spin rounded-full h-8 w-8 border-b-2 border-supervive-500;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+.slide-up {
+  animation: slideUp 0.3s ease-out;
+}
